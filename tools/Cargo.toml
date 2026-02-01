@@ -1,0 +1,15 @@
+[package]
+name = "compute_zero_hashes"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[[bin]]
+name = "compute_zero_hashes"
+path = "compute_zero_hashes.rs"
+
+[dependencies]
+light-poseidon = "0.2"
+ark-bn254 = "0.4"
+ark-ff = "0.4"

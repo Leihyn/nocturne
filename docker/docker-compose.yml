@@ -1,0 +1,212 @@
+version: '3.8'
+
+# StealthSol Distributed CoinJoin Network
+#
+# This configuration runs:
+# - 3 CoinJoin coordinator nodes (threshold 2-of-3)
+# - 3 ZK proof verifier nodes (threshold 2-of-3)
+# - Tor proxy for network privacy (optional)
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose logs -f            # View logs
+#   docker-compose down               # Stop all services
+#
+# For production:
+#   - Run coordinators on separate machines/VPS
+#   - Use different geographic locations
+#   - Enable Tor hidden services
+
+services:
+  # ============================================
+  # CoinJoin Coordinators (3 nodes)
+  # ============================================
+
+  coordinator-1:
+    build:
+      context: ..
+      dockerfile: docker/coordinator/Dockerfile
+    container_name: stealthsol-coordinator-1
+    environment:
+      - NODE_ID=coordinator-1
+      - PORT=8080
+      - KEY_SHARE_INDEX=1
+      - PEERS=ws://coordinator-2:8080,ws://coordinator-3:8080
+      - THRESHOLD=2
+      - TOTAL_SHARES=3
+      - REQUIRE_TOR=false
+    ports:
+      - "8081:8080"
+    networks:
+      - stealthsol-network
+    volumes:
+      - coordinator-1-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  coordinator-2:
+    build:
+      context: ..
+      dockerfile: docker/coordinator/Dockerfile
+    container_name: stealthsol-coordinator-2
+    environment:
+      - NODE_ID=coordinator-2
+      - PORT=8080
+      - KEY_SHARE_INDEX=2
+      - PEERS=ws://coordinator-1:8080,ws://coordinator-3:8080
+      - THRESHOLD=2
+      - TOTAL_SHARES=3
+      - REQUIRE_TOR=false
+    ports:
+      - "8082:8080"
+    networks:
+      - stealthsol-network
+    volumes:
+      - coordinator-2-data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - coordinator-1
+
+  coordinator-3:
+    build:
+      context: ..
+      dockerfile: docker/coordinator/Dockerfile
+    container_name: stealthsol-coordinator-3
+    environment:
+      - NODE_ID=coordinator-3
+      - PORT=8080
+      - KEY_SHARE_INDEX=3
+      - PEERS=ws://coordinator-1:8080,ws://coordinator-2:8080
+      - THRESHOLD=2
+      - TOTAL_SHARES=3
+      - REQUIRE_TOR=false
+    ports:
+      - "8083:8080"
+    networks:
+      - stealthsol-network
+    volumes:
+      - coordinator-3-data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - coordinator-1
+
+  # ============================================
+  # ZK Proof Verifiers (3 nodes)
+  # ============================================
+
+  verifier-1:
+    build:
+      context: ..
+      dockerfile: docker/verifier/Dockerfile
+    container_name: stealthsol-verifier-1
+    environment:
+      - NODE_ID=verifier-1
+      - PORT=3001
+      - VERIFIER_SEED=verifier-seed-1-${VERIFIER_SECRET:-changeme}
+      - THRESHOLD_PEERS=http://verifier-2:3001,http://verifier-3:3001
+      - THRESHOLD_REQUIRED=2
+      - NODE_ENV=production
+    ports:
+      - "3001:3001"
+    networks:
+      - stealthsol-network
+    volumes:
+      - ../frontend/public/circuits:/app/circuits:ro
+    restart: unless-stopped
+
+  verifier-2:
+    build:
+      context: ..
+      dockerfile: docker/verifier/Dockerfile
+    container_name: stealthsol-verifier-2
+    environment:
+      - NODE_ID=verifier-2
+      - PORT=3001
+      - VERIFIER_SEED=verifier-seed-2-${VERIFIER_SECRET:-changeme}
+      - THRESHOLD_PEERS=http://verifier-1:3001,http://verifier-3:3001
+      - THRESHOLD_REQUIRED=2
+      - NODE_ENV=production
+    ports:
+      - "3002:3001"
+    networks:
+      - stealthsol-network
+    volumes:
+      - ../frontend/public/circuits:/app/circuits:ro
+    restart: unless-stopped
+    depends_on:
+      - verifier-1
+
+  verifier-3:
+    build:
+      context: ..
+      dockerfile: docker/verifier/Dockerfile
+    container_name: stealthsol-verifier-3
+    environment:
+      - NODE_ID=verifier-3
+      - PORT=3001
+      - VERIFIER_SEED=verifier-seed-3-${VERIFIER_SECRET:-changeme}
+      - THRESHOLD_PEERS=http://verifier-1:3001,http://verifier-2:3001
+      - THRESHOLD_REQUIRED=2
+      - NODE_ENV=production
+    ports:
+      - "3003:3001"
+    networks:
+      - stealthsol-network
+    volumes:
+      - ../frontend/public/circuits:/app/circuits:ro
+    restart: unless-stopped
+    depends_on:
+      - verifier-1
+
+  # ============================================
+  # Tor Proxy (Optional - for network privacy)
+  # ============================================
+
+  tor:
+    image: dperson/torproxy:latest
+    container_name: stealthsol-tor
+    environment:
+      - LOCATION=US
+    ports:
+      - "9050:9050"   # SOCKS5 proxy
+      - "9051:9051"   # Control port
+    networks:
+      - stealthsol-network
+    restart: unless-stopped
+    profiles:
+      - tor  # Only start with --profile tor
+
+  # ============================================
+  # Load Balancer (for client connections)
+  # ============================================
+
+  nginx:
+    image: nginx:alpine
+    container_name: stealthsol-lb
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - stealthsol-network
+    depends_on:
+      - coordinator-1
+      - coordinator-2
+      - coordinator-3
+    restart: unless-stopped
+    profiles:
+      - production
+
+networks:
+  stealthsol-network:
+    driver: bridge
+
+volumes:
+  coordinator-1-data:
+  coordinator-2-data:
+  coordinator-3-data:

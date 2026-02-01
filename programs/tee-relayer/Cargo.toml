@@ -1,0 +1,22 @@
+[package]
+name = "tee-relayer"
+version = "0.1.0"
+description = "TEE Relayer for Private Withdrawals via MagicBlock Ephemeral Rollups"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "tee_relayer"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build"]
+production = []
+
+[dependencies]
+anchor-lang = { workspace = true }
+solana-program = { workspace = true }

@@ -1,0 +1,35 @@
+# StealthSol ZK Verifier Service - Docker Compose
+#
+# Usage:
+#   docker-compose up -d          # Start in background
+#   docker-compose logs -f        # View logs
+#   docker-compose down           # Stop service
+#
+# For production, set VERIFIER_SEED environment variable to a secure value
+
+version: '3.8'
+
+services:
+  verifier:
+    build: .
+    container_name: stealthsol-verifier
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      # IMPORTANT: Set this to a secure, unique seed for production
+      # The verifier keypair is derived from this seed
+      # - VERIFIER_SEED=your-secure-seed-here
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
